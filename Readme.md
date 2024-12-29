@@ -18,7 +18,8 @@ This project is a Python-based face recognition and identification system that c
 ```bash
 pip install face_recognition opencv-python
 
-## Project Structure
+
+### Project Structure
 
 project/
 │
