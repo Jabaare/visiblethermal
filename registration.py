@@ -1,38 +1,51 @@
 import face_recognition
 import os
 import cv2
+import logging
+import argparse
+import json
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Load gallery images and encode faces
 def load_gallery_images(gallery_path):
     """Loads and encodes all images from the gallery folder."""
+    if not os.path.exists(gallery_path):
+        logging.error(f"Gallery path '{gallery_path}' does not exist.")
+        return [], []
+
     known_encodings = []
     known_names = []
 
     for file_name in os.listdir(gallery_path):
-        # Load each image from the gallery
         image_path = os.path.join(gallery_path, file_name)
-        image = face_recognition.load_image_file(image_path)
+        try:
+            image = face_recognition.load_image_file(image_path)
+        except Exception as e:
+            logging.warning(f"Failed to load {file_name}: {str(e)}")
+            continue
 
-        # Encode the face (assuming one face per gallery image)
         encodings = face_recognition.face_encodings(image)
-        if encodings:  # Ensure a face was found
+        if encodings:
             known_encodings.append(encodings[0])
-            # Use the file name (without extension) as the label
             known_names.append(os.path.splitext(file_name)[0])
+            logging.info(f"Encoded {file_name}")
+        else:
+            logging.warning(f"No face found in {file_name}")
 
     return known_encodings, known_names
 
+# Identify faces in the probe image
 def identify_subjects_in_probe(probe_image_path, known_encodings, known_names, threshold=0.6):
-    """Identifies all faces in the probe image with a confidence threshold."""
-    # Load and encode the probe image
     probe_image = face_recognition.load_image_file(probe_image_path)
     probe_encodings = face_recognition.face_encodings(probe_image)
 
     if not probe_encodings:
-        return "No faces detected in the probe image."
+        return ["No faces detected in the probe image."]
 
     results = []
     for i, probe_encoding in enumerate(probe_encodings):
-        # Compare the probe face with known faces
         matches = face_recognition.compare_faces(known_encodings, probe_encoding)
         distances = face_recognition.face_distance(known_encodings, probe_encoding)
 
@@ -40,7 +53,6 @@ def identify_subjects_in_probe(probe_image_path, known_encodings, known_names, t
             results.append(f"Face {i + 1}: No match found.")
             continue
 
-        # Find the best match
         best_match_index = distances.argmin()
         best_match_distance = distances[best_match_index]
         
@@ -52,20 +64,53 @@ def identify_subjects_in_probe(probe_image_path, known_encodings, known_names, t
 
     return results
 
-# Paths
-gallery_path = "gallery"  # Folder containing known images
-probe_image_path = "probe.jpg"  # Probe image to identify
-confidence_threshold = 0.6  # Confidence threshold for face identification
+# Draw bounding boxes and results on image
+def draw_results_on_image(probe_image_path, results):
+    image = cv2.imread(probe_image_path)
+    face_locations = face_recognition.face_locations(face_recognition.load_image_file(probe_image_path))
 
-# Step 1: Load gallery images
-known_encodings, known_names = load_gallery_images(gallery_path)
+    for (top, right, bottom, left), result in zip(face_locations, results):
+        color = (0, 255, 0) if "Identified" in result else (0, 0, 255)
+        cv2.rectangle(image, (left, top), (right, bottom), color, 2)
+        cv2.putText(image, result, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
 
-# Step 2: Identify subjects in the probe image
-results = identify_subjects_in_probe(probe_image_path, known_encodings, known_names, threshold=confidence_threshold)
+    cv2.imshow("Results", image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
-# Print results
-if isinstance(results, str):  # If no faces were detected
-    print(results)
-else:
-    for result in results:
-        print(result)
+# Process multiple probe images
+def process_multiple_probes(probe_folder, known_encodings, known_names, threshold=0.6):
+    all_results = {}
+    for probe_image in os.listdir(probe_folder):
+        probe_path = os.path.join(probe_folder, probe_image)
+        results = identify_subjects_in_probe(probe_path, known_encodings, known_names, threshold)
+        all_results[probe_image] = results
+        logging.info(f"\nResults for {probe_image}:")
+        for result in results:
+            print(result)
+        draw_results_on_image(probe_path, results)
+
+    # Save results to a JSON file
+    with open("results.json", "w") as f:
+        json.dump(all_results, f, indent=4)
+
+# Main function to parse arguments and execute
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Face Recognition from Probe Images")
+    parser.add_argument('--gallery', type=str, default="gallery", help="Path to gallery folder")
+    parser.add_argument('--probe', type=str, default="probe.jpg", help="Path to probe image or folder")
+    parser.add_argument('--threshold', type=float, default=0.6, help="Confidence threshold for identification")
+    args = parser.parse_args()
+
+    # Step 1: Load gallery images
+    known_encodings, known_names = load_gallery_images(args.gallery)
+
+    # Step 2: Process probe image(s)
+    if os.path.isdir(args.probe):
+        process_multiple_probes(args.probe, known_encodings, known_names, threshold=args.threshold)
+    else:
+        results = identify_subjects_in_probe(args.probe, known_encodings, known_names, threshold=args.threshold)
+        for result in results:
+            print(result)
+        draw_results_on_image(args.probe, results)
+
