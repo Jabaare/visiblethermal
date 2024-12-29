@@ -17,3 +17,16 @@ This project is a Python-based face recognition and identification system that c
 ### Install Dependencies
 ```bash
 pip install face_recognition opencv-python
+
+## Project Structure
+
+project/
+│
+├── gallery/            # Folder for known face images
+│   ├── alice.jpg
+│   └── bob.jpg
+│
+├── probe.jpg           # Probe image to analyze
+├── identify.py         # Main face recognition script
+├── README.md           # Project documentation
+└── LICENSE             # License file
