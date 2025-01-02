@@ -114,3 +114,5 @@ if __name__ == "__main__":
             print(result)
         draw_results_on_image(args.probe, results)
 
+# Run the script with the following command:
+python registration.py --gallery gallery --probe probe.jpg --threshold 0.6
